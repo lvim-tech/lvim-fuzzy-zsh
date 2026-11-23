@@ -35,7 +35,8 @@ It replaces `fzf-tab`: do not load both.
 |---|---|
 | `Tab` | complete; when there is a choice and nothing more is common, lfz opens |
 | type | filter (lfz's own matching) |
-| `Enter` | put the chosen word in the line, the way zsh would have (quoted, with the `/` of a directory, with a space after a command) |
+| `Enter` | choose the word under the cursor and close: it goes into the line the way zsh would have put it (quoted, with the `/` of a directory, with a space after a command) |
+| `Tab` | on a directory: go into it — the line gets it and the finder opens again on what is inside (directories, and files where the command takes them), until there is nothing more to choose; on anything else it chooses like Enter. `Shift-Tab` does nothing (inside the finder `Tab` does not move or mark) |
 | `Ctrl-P` | the preview of the row under the cursor, on and off: a directory shows what is in it, a text file its beginning, any other file what it is, any other candidate its whole text. The finder grows to make room for it |
 | `Esc` | nothing chosen: the line stays as it was |
 

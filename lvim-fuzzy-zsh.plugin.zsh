@@ -35,6 +35,7 @@ typeset -ga _lvfz_path                 # per candidate: the file it is, when it 
 typeset -g  _LVFZ_DIR=${${(%):-%x}:A:h}   # where this file is (the preview script is next to it)
 typeset -gA _lvfz_seen                 # candidates already collected (a completer may offer one twice)
 typeset -ga _lvfz_choice               # what was chosen: the contexts to add
+typeset -gi _lvfz_picked=0             # 1 when the finder was left with Tab on a choice (this round): go on inside it
 
 # compadd takes every completion function's candidates: remember them (with the context they are valid in), and let zsh have them as well, so
 # the completers know that something matched
@@ -75,12 +76,22 @@ _lvfz_compadd() {
     word=$hits[i]
     shown=${dscr[i]:-$word}
     shown=${shown//[$'\n\t']/ }
+    # a directory shows with its /, whatever the completion function showed
+    [[ -n $isfile && -d $dirpart${(Q)word} && $shown != */ ]] && shown+=/
     key=$word$'\1'$IPREFIX$'\1'$PREFIX$'\1'$SUFFIX$'\1'$ISUFFIX$'\1'$args
     (( $+_lvfz_seen[$key] )) && continue
     _lvfz_seen[$key]=1
     _lvfz_disp+=$shown
     _lvfz_ctx+=$key
-    if [[ -n $isfile ]]; then _lvfz_path+=$dirpart${(Q)word}; else _lvfz_path+=; fi
+    # the file a candidate stands for: when the completion says it is one (-f), or, when it does not say, when the word is a file or directory that
+    # is there (a completion function that adds its directories without -f)
+    if [[ -n $isfile ]]; then
+      _lvfz_path+=$dirpart${(Q)word}
+    elif [[ -e ${(Q)word} ]]; then
+      _lvfz_path+=${(Q)word}
+    else
+      _lvfz_path+=
+    fi
   done
 
   # zsh's own, so that the completion counts as having matched
@@ -136,7 +147,7 @@ _lvfz_complete() {
       # the finder ends, until it is back on the line: --exit-cursor=hidden)
       echoti civis >/dev/tty 2>/dev/null
       print -n '\n' >/dev/tty
-      out=$(print -rl -- $lines | ${(z)_lvfz_cmd} $flags --exit-cursor=hidden --delimiter=$'\t' --with-nth=2 --accept-nth=1 --target='{3}' --no-multi)
+      out=$(print -rl -- $lines | ${(z)_lvfz_cmd} $flags --exit-cursor=hidden --delimiter=$'\t' --with-nth=2 --accept-nth=1 --target='{3}' --expect=tab --bind=shift-tab:ignore --no-multi)
       local fret=$?
       command rm -f -- $pf
       echoti cuu1 >/dev/tty 2>/dev/null
@@ -147,9 +158,12 @@ _lvfz_complete() {
         compstate[insert]=
         return 1
       fi
+      # (--expect=tab: the first line is the key that ended it — `tab`, or empty for Enter — then the chosen rows)
       _lvfz_choice=()
+      local -a res=("${(@f)out}")
+      [[ $res[1] == tab ]] && _lvfz_picked=1
       local n
-      for n in ${(f)out}; do
+      for n in $res[2,-1]; do
         [[ $n == <-> ]] && _lvfz_choice+=$_lvfz_ctx[n]
       done
       ;;
@@ -183,23 +197,37 @@ _lvfz_apply() {
 
 # The Tab widget: complete (collecting what is offered; the finder opens when there is a choice), then add what was chosen.
 _lvfz_tab() {
-  local -i ret=0
-  _lvfz_disp=() _lvfz_ctx=() _lvfz_choice=() _lvfz_path=()
-  _lvfz_seen=()
-  _lvfz_on=1
-  {
-    # (the widget with compsys, not the dotted builtin: only that one runs _main_complete)
-    zle expand-or-complete || ret=$?
-    if (( $#_lvfz_choice )); then
-      zle _lvfz_apply_widget || ret=$?
+  setopt localoptions
+  local -i ret=0 round=0 again=1
+  while (( again )); do
+    again=0
+    (( round++ ))
+    # (the rounds after the first complete inside a directory just chosen: when it has nothing to offer there is no beep)
+    (( round > 1 )) && unsetopt beep
+    _lvfz_disp=() _lvfz_ctx=() _lvfz_choice=() _lvfz_path=()
+    _lvfz_seen=()
+    _lvfz_picked=0
+    _lvfz_on=1
+    {
+      # (the widget with compsys, not the dotted builtin: only that one runs _main_complete)
+      zle expand-or-complete || ret=$?
+      if (( $#_lvfz_choice )); then
+        zle _lvfz_apply_widget || ret=$?
+      fi
+    } always {
+      _lvfz_on=0
+    }
+    # Tab in the finder on a directory (the line ends in /): the finder opens again on what is inside it, until there is nothing more to choose (a
+    # directory with nothing in it, a file), Enter (which chooses and ends) or Esc
+    if (( _lvfz_picked )) && [[ $LBUFFER == */ ]]; then
+      again=1
+      zle -R
     fi
-  } always {
-    _lvfz_on=0
-  }
+  done
   # lfz gave the cursor back as the terminal's default; the shell's own shape (zsh-vi-mode's bar in insert mode) comes back
   (( $+functions[zvm_update_cursor] )) && zvm_update_cursor
-  zle .reset-prompt
-  zle -R
+  # (redisplay: the line is drawn again with the prompt as it is; `reset-prompt` would run a prompt that is a command, like starship's, again)
+  zle .redisplay
   return $ret
 }
 
