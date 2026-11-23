@@ -51,6 +51,12 @@ zstyle ':lvim-fuzzy-zsh:*' disabled-on files              # contexts where zsh's
 zstyle ':lvim-fuzzy-zsh:*' bind '^I'                      # the key (default: Tab)
 ```
 
+## When a candidate has no icon or preview
+
+`LVFZ_DEBUG=/tmp/lvfz.log zsh` (or `export LVFZ_DEBUG=…` before pressing `Tab`) writes down what each completion function offered: whether it says the words are files
+(`isfile`), the prefixes, and the first word. A candidate gets its file (for the icon and the preview) from `-f` and the typed directory, or, when the function
+says neither, from the word itself when that names a file that exists (`~/` is expanded).
+
 ## How it works
 
 - `compadd` — what every completion function calls to offer words — is wrapped: it remembers each word with its description and the context it is

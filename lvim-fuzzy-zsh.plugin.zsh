@@ -14,6 +14,7 @@
 
 [[ -o interactive ]] || return 0
 zmodload zsh/zutil 2>/dev/null
+zmodload zsh/datetime 2>/dev/null
 
 # the finder
 typeset -g _lvfz_cmd
@@ -35,6 +36,7 @@ typeset -ga _lvfz_path                 # per candidate: the file it is, when it 
 typeset -g  _LVFZ_DIR=${${(%):-%x}:A:h}   # where this file is (the preview script is next to it)
 typeset -gA _lvfz_seen                 # candidates already collected (a completer may offer one twice)
 typeset -ga _lvfz_choice               # what was chosen: the contexts to add
+typeset -g  _lvfz_cut=                 # what stood after the cursor in the word completed (SUFFIX): the chosen word replaces the whole word
 typeset -gi _lvfz_picked=0             # 1 when the finder was left with Tab on a choice (this round): go on inside it
 
 # compadd takes every completion function's candidates: remember them (with the context they are valid in), and let zsh have them as well, so
@@ -66,6 +68,8 @@ _lvfz_compadd() {
   local ret=$?
   (( $#hits )) || return $ret
 
+  # LVFZ_DEBUG=/some/file: what each completion function offered, to find out why a candidate has no file or icon
+  [[ -n $LVFZ_DEBUG ]] && print -r -- "${EPOCHREALTIME:-0} compadd isfile=[$isfile] IPREFIX=[$IPREFIX] PREFIX=[$PREFIX] hpre=[${(kv)hpre}] apre=[${(kv)apre}] opts=[${_opts}] first=[$hits[1]] n=$#hits" >> $LVFZ_DEBUG
   _opts+=("${(@kv)apre}" "${(@kv)hpre}" $isfile)
   local args=${(pj:\2:)_opts}
   # a file the candidate stands for: the directory typed before it (hidden prefix, with ~ and variables expanded) and the word, unquoted
@@ -87,10 +91,13 @@ _lvfz_compadd() {
     # is there (a completion function that adds its directories without -f)
     if [[ -n $isfile ]]; then
       _lvfz_path+=$dirpart${(Q)word}
-    elif [[ -e ${(Q)word} ]]; then
-      _lvfz_path+=${(Q)word}
     else
-      _lvfz_path+=
+      # (the word may carry its own directory, `~/.zshrc`, and a space after it: the file is what it names with the ~ expanded)
+      local w=${(Q)word}
+      w=${w%%[[:space:]]#}
+      w=${w/#\~\//$HOME/}
+      [[ $w == '~' ]] && w=$HOME
+      if [[ -e $w ]]; then _lvfz_path+=$w; else _lvfz_path+=; fi
     fi
   done
 
@@ -185,6 +192,7 @@ _lvfz_apply() {
     local -a args=("${(@ps:\2:)f[6]}")
     [[ -z $args[1] ]] && args=()
     IPREFIX=${f[2]-} PREFIX=${f[3]-} SUFFIX=${f[4]-} ISUFFIX=${f[5]-}
+    _lvfz_cut=${f[4]-}
     builtin compadd "${args[@]:--Q}" -Q -- "$f[1]"
   done
   compstate[list]=
@@ -214,6 +222,11 @@ _lvfz_tab() {
       zle expand-or-complete || ret=$?
       if (( $#_lvfz_choice )); then
         zle _lvfz_apply_widget || ret=$?
+        # the cursor was inside the word (`vim ~/.zsh|rc`): what stood after it is part of the word that was replaced, so it goes (a completion that
+        # keeps the suffix in its matches, as zsh's own does, has put it back by itself)
+        if [[ -n $_lvfz_cut && ${RBUFFER[1,${#_lvfz_cut}]} == "$_lvfz_cut" ]]; then
+          RBUFFER=${RBUFFER[$(( ${#_lvfz_cut} + 1 )),-1]}
+        fi
       fi
     } always {
       _lvfz_on=0
