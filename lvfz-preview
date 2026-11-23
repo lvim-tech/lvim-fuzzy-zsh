@@ -1,0 +1,21 @@
+#!/bin/sh
+# lvim-fuzzy-zsh's preview of a candidate: $1 is the file of candidates (path TAB text per line), $2 the number of the one to show.
+# A directory: what is in it; a text file: its beginning; another file: what it is; not a file: the text of the candidate.
+line=$(sed -n "${2}p" "$1")
+path=${line%%	*}
+text=${line#*	}
+if [ -n "$path" ] && [ -d "$path" ]; then
+    ls -A --color=always -- "$path" 2>/dev/null | head -n 200
+elif [ -n "$path" ] && [ -f "$path" ]; then
+    case $(file -b --mime-type -- "$path" 2>/dev/null) in
+        text/* | application/json | application/xml | inode/x-empty)
+            if command -v bat >/dev/null 2>&1; then
+                bat --color=always --style=plain --line-range=:200 -- "$path"
+            else
+                head -n 200 -- "$path"
+            fi ;;
+        *) file -b -- "$path" ;;
+    esac
+else
+    printf '%s\n' "$text"
+fi
