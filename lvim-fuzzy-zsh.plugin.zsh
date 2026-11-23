@@ -143,11 +143,12 @@ _lvfz_complete() {
       flags+=(--preview="$_LVFZ_DIR/lvfz-preview ${(q)pf} {1}")
       local out
       # the finder draws from the line the cursor is on: one line down first, so that the line being typed stays on the screen; and back up after
+      # (the preview opens on the right, whatever side lfz remembers for its own runs; flags of your own come after and can say otherwise)
       # (the cursor is hidden meanwhile: it does not jump down and wait, the finder shows its own where the field is; and it stays hidden when
       # the finder ends, until it is back on the line: --exit-cursor=hidden)
       echoti civis >/dev/tty 2>/dev/null
       print -n '\n' >/dev/tty
-      out=$(print -rl -- $lines | ${(z)_lvfz_cmd} $flags --exit-cursor=hidden --delimiter=$'\t' --with-nth=2 --accept-nth=1 --target='{3}' --expect=tab --bind=shift-tab:ignore --no-multi)
+      out=$(print -rl -- $lines | ${(z)_lvfz_cmd} --preview-window=right $flags --exit-cursor=hidden --delimiter=$'\t' --with-nth=2 --accept-nth=1 --target='{3}' --expect=tab --bind=shift-tab:ignore --no-multi)
       local fret=$?
       command rm -f -- $pf
       echoti cuu1 >/dev/tty 2>/dev/null
